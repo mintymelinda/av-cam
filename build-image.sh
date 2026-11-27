@@ -14,7 +14,7 @@ fail() { printf '[petcam-image] ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$EUID" -eq 0 ]] || fail "Run this image customizer as root (for example: sudo $0 ...)."
 
-for tool in curl xz losetup mount umount blkid chroot sha256sum; do
+for tool in curl xz losetup mount umount blkid chroot sha256sum parted e2fsck resize2fs; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required host tool is missing: $tool"
 done
 CHROOT_EMULATOR=""
@@ -98,8 +98,35 @@ fi
 [[ "$(blkid -s TYPE -o value "${LOOP_DEVICE}p1")" == vfat ]] || fail "The first image partition is not the expected FAT boot partition."
 [[ "$(blkid -s TYPE -o value "${LOOP_DEVICE}p2")" == ext4 ]] || fail "The second image partition is not the expected ext4 root partition."
 
+# The stock Lite image has a small root partition. VLC's ARMHF plugin set
+# needs substantially more room during dpkg unpacking than the stock image
+# provides. Grow the root partition by 3 GiB before mounting it; the added
+# space is zero-filled and compresses efficiently in the final image.
+log "Expanding the temporary image root filesystem by 3 GiB for VLC package installation."
+losetup -d "$LOOP_DEVICE"
+LOOP_DEVICE=""
+truncate -s +3G "$BASE_IMAGE"
+parted --script "$BASE_IMAGE" resizepart 2 100%
+LOOP_DEVICE="$(losetup --find --show --partscan "$BASE_IMAGE")"
+for _ in $(seq 1 30); do
+  [[ -b "${LOOP_DEVICE}p1" && -b "${LOOP_DEVICE}p2" ]] && break
+  udevadm settle || true
+  sleep 1
+done
+[[ -b "${LOOP_DEVICE}p1" && -b "${LOOP_DEVICE}p2" ]] || fail "Expanded image partition devices were not found."
+[[ "$(blkid -s TYPE -o value "${LOOP_DEVICE}p2")" == ext4 ]] || fail "Expanded root partition is not ext4."
+set +e
+e2fsck -f -p "${LOOP_DEVICE}p2"
+fsck_status=$?
+set -e
+(( fsck_status <= 1 )) || fail "Root filesystem check failed after expanding the image (e2fsck status $fsck_status)."
+resize2fs "${LOOP_DEVICE}p2"
+
 mkdir -p "$ROOTFS"
 mount "${LOOP_DEVICE}p2" "$ROOTFS"
+available_kib="$(df -Pk "$ROOTFS" | awk 'NR == 2 { print $4 }')"
+[[ "$available_kib" =~ ^[0-9]+$ ]] || fail "Could not determine free space in the expanded root filesystem."
+(( available_kib >= 2500000 )) || fail "Expanded root filesystem has less than 2.5 GiB free; refusing to begin package installation."
 BOOT_PATH="$(awk '$1 !~ /^#/ && ($2 == "/boot/firmware" || $2 == "/boot") { print $2; exit }' "$ROOTFS/etc/fstab")"
 [[ "$BOOT_PATH" == "/boot/firmware" || "$BOOT_PATH" == "/boot" ]] || fail "Could not determine the boot partition mount point from the stock image fstab."
 BOOT_MOUNT="$ROOTFS$BOOT_PATH"
