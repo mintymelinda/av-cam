@@ -51,7 +51,8 @@ def load_camera_status(path: Path | str = CONFIG_FILE) -> dict:
 
 def detect_audio_device(config: dict) -> str:
     audio = config.get("audio", {})
-    configured = str(audio.get("device") or os.environ.get("PETCAM_AUDIO_DEVICE", "auto")).strip()
+    environment_device = os.environ.get("PETCAM_AUDIO_DEVICE")
+    configured = str(environment_device if environment_device else audio.get("device") or "auto").strip()
     if configured.lower() != "auto":
         if not configured or any(c in configured for c in "\r\n"):
             raise VlcError("The ALSA capture device name is invalid.")
