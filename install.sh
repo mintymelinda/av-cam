@@ -43,8 +43,11 @@ while IFS= read -r package || [[ -n "$package" ]]; do
   APT_PACKAGES+=("$package")
 done < "$REPO_ROOT/requirements.apt"
 (("${#APT_PACKAGES[@]}" > 0)) || fail "No apt packages were declared in requirements.apt."
-log "Installing native H.264 capture and VLC runtime dependencies."
+log "Installing native H.264 capture and the headless VLC CLI runtime."
 apt-get install -y --no-install-recommends "${APT_PACKAGES[@]}"
+if dpkg-query -W -f='${db:Status-Abbrev}' vlc vlc-plugin-qt vlc-plugin-video-output 2>/dev/null | grep -q '^ii'; then
+  fail "A VLC desktop/player or local video-output package was installed; PetCam requires the headless cvlc runtime only."
+fi
 log "Installing the Python application source."
 install -d -m 0755 "$APP_ROOT" /usr/local/bin
 rm -rf "$APP_ROOT/src"
@@ -61,8 +64,9 @@ if ! HELP_OUTPUT="$(PYTHONPATH="$APP_ROOT/src${PYTHONPATH:+:$PYTHONPATH}" /usr/b
 fi
 grep -Fq "usage: petcam" <<< "$HELP_OUTPUT" || fail "The installed PetCam Python CLI did not produce its expected help output."
 log "Checking that the installed VLC executable is available."
-command -v cvlc >/dev/null 2>&1 || fail "VLC was installed without the cvlc executable."
-log "Verified VLC runtime availability."
+command -v cvlc >/dev/null 2>&1 || fail "VLC was installed without the cvlc command-line executable."
+cvlc --version >/dev/null 2>&1 || fail "The installed headless VLC command-line runtime failed to start."
+log "Verified the headless VLC CLI runtime; no desktop VLC packages are installed."
 log "Leaving the installed VLC runtime and camera/audio utilities in place."
 LAUNCHER_TMP="/usr/local/bin/.petcam.${BASHPID}"
 log "Installing the PetCam command launcher."
