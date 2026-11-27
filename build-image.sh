@@ -7,7 +7,7 @@ RASPIOS_IMAGE_URL="${PETCAM_RASPIOS_IMAGE_URL:-https://downloads.raspberrypi.com
 VERSION="${PETCAM_VERSION:-development}"
 SOURCE_COMMIT="${PETCAM_SOURCE_COMMIT:-}"
 SOURCE_REF="${PETCAM_SOURCE_REF:-$VERSION}"
-SOURCE_REPOSITORY="${PETCAM_SOURCE_REPOSITORY:-https://github.com/mintymelinda/h264-cam.git}"
+SOURCE_REPOSITORY="${PETCAM_SOURCE_REPOSITORY:-https://github.com/mintymelinda/av-cam.git}"
 
 log() { printf '[petcam-image] %s\n' "$*"; }
 fail() { printf '[petcam-image] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -168,11 +168,27 @@ run_chroot /bin/bash -e -c '
   rm -rf /var/lib/apt/lists/*
   test -s /opt/petcam/build-info
   test -s /opt/petcam/src/petcam/cli.py
-  test -s /opt/petcam/lib/libpetcam_live555.so
+  test -s /opt/petcam/src/petcam/infrastructure/streaming/vlc.py
   test -x /usr/local/bin/petcam
+  command -v cvlc >/dev/null
+  cvlc --version >/dev/null
   /usr/local/bin/petcam -h
-  PYTHONPATH=/opt/petcam/src /usr/bin/python3 -c "from petcam.infrastructure.streaming.live555 import Live555Server; Live555Server(); print(\"Live555 native library loaded successfully.\")"
-' || fail "The final image failed installed application or native Live555 verification."
+  PYTHONPATH=/opt/petcam/src /usr/bin/python3 - <<'PY'
+from petcam.infrastructure.streaming import vlc
+
+vlc.detect_audio_device = lambda _config: "plughw:1,0"
+command = vlc.build_vlc_command({
+    "source": "USB", "native_h264": True, "device": "/dev/video0",
+    "resolution": "1280x720", "fps": 30,
+    "audio": {"enabled": True, "device": "plughw:1,0"},
+}, vlc_binary="/usr/bin/cvlc")
+sout = next(value for value in command if value.startswith("--sout="))
+assert sout == "--sout=#transcode{acodec=mp3,ab=128,channels=2,samplerate=44100}:std{access=http,mux=ts,dst=:8080/stream}"
+assert "--v4l2-chroma=H264" in command
+assert not any("vcodec=" in value for value in command)
+print("VLC runtime and combined native-H.264/MP3 /stream command verified.")
+PY
+' || fail "The final image failed installed application or VLC stream-command verification."
 
 if [[ -n "$CHROOT_EMULATOR" ]]; then
   rm -f "$ROOTFS/usr/bin/qemu-arm-static"
@@ -210,7 +226,7 @@ losetup -d "$VERIFY_LOOP_DEVICE"
 VERIFY_LOOP_DEVICE=""
 sync
 
-FINAL_IMAGE="$OUTPUT_DIR/h264-cam-$VERSION-raspios-lite-armhf.img.xz"
+FINAL_IMAGE="$OUTPUT_DIR/petcam-$VERSION-raspios-lite-armhf.img.xz"
 log "Compressing the customized image."
 xz --threads=0 --compress --fast --force --keep --stdout "$BASE_IMAGE" > "$FINAL_IMAGE"
 [[ -s "$FINAL_IMAGE" ]] || fail "The customized image archive is empty."

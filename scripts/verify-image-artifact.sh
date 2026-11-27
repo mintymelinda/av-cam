@@ -71,7 +71,7 @@ grep -Fxq "SOURCE_COMMIT=$EXPECTED_COMMIT" "$ROOTFS/opt/petcam/build-info" || fa
 INSTALLER_SHA256="$(awk -F= '$1 == "INSTALLER_SHA256" { print $2 }' "$ROOTFS/opt/petcam/build-info")"
 [[ "$INSTALLER_SHA256" =~ ^[a-fA-F0-9]{64}$ ]] || fail "Image provenance contains an invalid install.sh checksum."
 
-for file in /opt/petcam/source/install.sh /opt/petcam/src/petcam/cli.py /opt/petcam/lib/libpetcam_live555.so /usr/local/bin/petcam; do
+for file in /opt/petcam/source/install.sh /opt/petcam/src/petcam/cli.py /opt/petcam/src/petcam/infrastructure/streaming/vlc.py /usr/local/bin/petcam; do
   [[ -s "$ROOTFS$file" ]] || fail "Required installed image file is missing or empty: $file"
 done
 [[ -x "$ROOTFS/usr/local/bin/petcam" ]] || fail "The installed PetCam launcher is not executable."
@@ -103,11 +103,27 @@ run_chroot /bin/bash -e -c '
   test "$VERSION_CODENAME" = trixie
   test -s /opt/petcam/build-info
   test -s /opt/petcam/src/petcam/cli.py
-  test -s /opt/petcam/lib/libpetcam_live555.so
+  test -s /opt/petcam/src/petcam/infrastructure/streaming/vlc.py
   test -x /usr/local/bin/petcam
+  command -v cvlc >/dev/null
+  cvlc --version >/dev/null
   /usr/local/bin/petcam -h
-  PYTHONPATH=/opt/petcam/src /usr/bin/python3 -c "from petcam.infrastructure.streaming.live555 import Live555Server; Live555Server(); print(\"Live555 native library loaded successfully.\")"
-' || fail "The extracted release image failed ARMHF, CLI, or native Live555 verification."
+  PYTHONPATH=/opt/petcam/src /usr/bin/python3 - <<'PY'
+from petcam.infrastructure.streaming import vlc
+
+vlc.detect_audio_device = lambda _config: "plughw:1,0"
+command = vlc.build_vlc_command({
+    "source": "USB", "native_h264": True, "device": "/dev/video0",
+    "resolution": "1280x720", "fps": 30,
+    "audio": {"enabled": True, "device": "plughw:1,0"},
+}, vlc_binary="/usr/bin/cvlc")
+sout = next(value for value in command if value.startswith("--sout="))
+assert sout == "--sout=#transcode{acodec=mp3,ab=128,channels=2,samplerate=44100}:std{access=http,mux=ts,dst=:8080/stream}"
+assert "--v4l2-chroma=H264" in command
+assert not any("vcodec=" in value for value in command)
+print("VLC runtime and combined native-H.264/MP3 /stream command verified.")
+PY
+' || fail "The extracted release image failed ARMHF, CLI, or VLC stream-command verification."
 
 if [[ -n "$CHROOT_EMULATOR" ]]; then
   rm -f "$ROOTFS/usr/bin/qemu-arm-static"
