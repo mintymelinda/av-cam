@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import shutil
+import socket
 import signal
 import subprocess
 import time
@@ -101,9 +102,10 @@ def build_vlc_command(config: dict, *, vlc_binary: str = "cvlc") -> list[str]:
     return [
         vlc_binary, "--intf", "dummy", "--no-video-title-show", "--no-sout-display",
         "--sout-keep", f"--sout={sout}",
-        f"v4l2://{device}", f"--v4l2-chroma=h264",
-        f"--v4l2-width={width}", f"--v4l2-height={height}", f"--v4l2-fps={fps:g}",
         f"--input-slave=alsa://{alsa_device}",
+        "--v4l2-chroma=h264", f"--v4l2-width={width}",
+        f"--v4l2-height={height}", f"--v4l2-fps={fps:g}",
+        f"v4l2://{device}",
     ]
 
 
@@ -151,8 +153,18 @@ def run_server() -> int:
     logging.info("VLC command: %s", " ".join(command))
     try:
         process = subprocess.Popen(command)
+        start_deadline = time.monotonic() + 20
         while process.poll() is None and not stopping:
-            write_status("ready", config)
+            try:
+                with socket.create_connection(("127.0.0.1", HTTP_PORT), timeout=0.5):
+                    ready = True
+            except OSError:
+                ready = False
+            write_status("ready" if ready else "starting", config)
+            if not ready and time.monotonic() >= start_deadline:
+                logging.error("VLC did not open the HTTP stream listener within 20 seconds.")
+                process.terminate()
+                return 1
             time.sleep(1)
         return process.wait()
     except OSError as error:

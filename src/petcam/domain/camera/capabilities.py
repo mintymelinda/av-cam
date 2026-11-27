@@ -1,4 +1,4 @@
-"""Parse the capture modes advertised by V4L2 and Raspberry Pi cameras."""
+"""Parse the capture modes advertised by USB V4L2 cameras."""
 
 from __future__ import annotations
 
@@ -15,11 +15,6 @@ FPS_RANGE_RE = re.compile(
     r"Interval: (?:Stepwise|Continuous) ([\d.]+)s - ([\d.]+)s"
     r"(?: with step ([\d.]+)s)?"
 )
-CSI_CAMERA_RE = re.compile(
-    r"^\s*(\d+)\s*:\s*(\S+)\s*\[(\d+)x(\d+)\](?:\s+\(([^)]+)\))?"
-)
-CSI_MODE_RE = re.compile(r"(\d+)x(\d+)\s+\[([\d.]+)\s+fps")
-
 
 def parse_v4l2_modes(output: str) -> list[dict]:
     """Return all V4L2 format/mode combinations reported by v4l2-ctl."""
@@ -84,35 +79,6 @@ def parse_v4l2_modes(output: str) -> list[dict]:
     for mode in modes:
         mode["fps"].sort(reverse=True)
     return modes
-
-
-def parse_csi_cameras(output: str) -> list[dict]:
-    """Parse rpicam-hello --list-cameras output into camera sensor modes."""
-    cameras: list[dict] = []
-    current = None
-    for line in output.splitlines():
-        match = CSI_CAMERA_RE.search(line)
-        if match:
-            current = {
-                "index": int(match.group(1)),
-                "sensor": match.group(2),
-                "sensor_width": int(match.group(3)),
-                "sensor_height": int(match.group(4)),
-                "device_path": match.group(5) or "",
-                "modes": [],
-            }
-            cameras.append(current)
-            continue
-        match = CSI_MODE_RE.search(line)
-        if match and current:
-            mode = {
-                "width": int(match.group(1)),
-                "height": int(match.group(2)),
-                "fps": float(match.group(3)),
-            }
-            if mode not in current["modes"]:
-                current["modes"].append(mode)
-    return cameras
 
 
 def mode_fps_values(mode: dict) -> list[float]:

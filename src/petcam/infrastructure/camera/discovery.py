@@ -1,29 +1,11 @@
-"""Discover USB and CSI cameras and the native H.264 encoder capability."""
+"""Discover USB cameras and their native H.264 capture modes."""
 
 from __future__ import annotations
 
-import re
 import subprocess
 from pathlib import Path
 
-from ...domain.camera.capabilities import parse_csi_cameras, parse_v4l2_modes
-
-
-def discover_csi_cameras() -> list[dict]:
-    """Return the CSI cameras and sensor modes reported by the Raspberry Pi stack."""
-    try:
-        result = subprocess.run(
-            ["rpicam-hello", "--list-cameras"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=15,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    if result.returncode:
-        return []
-    return parse_csi_cameras(result.stdout + "\n" + result.stderr)
+from ...domain.camera.capabilities import parse_v4l2_modes
 
 
 def _usb_parent(video_entry: Path) -> Path | None:
@@ -92,31 +74,3 @@ def discover_usb_cameras(
     return cameras
 
 
-def detect_hardware_h264_encoder(
-    sysfs_root: Path = Path("/sys/class/video4linux"),
-    dev_root: Path = Path("/dev"),
-) -> dict:
-    """Require a V4L2 hardware H.264 encoder; never accept a software encoder."""
-    for entry in sorted(sysfs_root.glob("video*")):
-        try:
-            name = (entry / "name").read_text(encoding="utf-8").strip().lower()
-        except OSError:
-            continue
-        if "bcm2835-codec-encode" not in name:
-            continue
-        device = dev_root / entry.name
-        if not device.exists():
-            continue
-        try:
-            result = subprocess.run(
-                ["v4l2-ctl", "--device", str(device), "--list-formats"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=5,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            continue
-        if result.returncode == 0 and re.search(r"['\"]H264['\"]|H\.264", result.stdout, re.IGNORECASE):
-            return {"available": True, "device": str(device), "encoder": name, "format": "H264"}
-    return {"available": False, "device": None, "encoder": None, "format": None}
