@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Configure a camera and serve its native H.264 stream over RTSP."""
+"""Configure a USB camera and publish one combined H.264 + MP3 HTTP stream."""
 
 from __future__ import annotations
 
@@ -20,8 +20,6 @@ from pathlib import Path
 from .configuration import ConfigurationError, validate_config
 from .domain.camera.capabilities import mode_fps_values
 from .infrastructure.camera.discovery import (
-    detect_hardware_h264_encoder,
-    discover_csi_cameras,
     discover_usb_cameras,
 )
 from .infrastructure.system.metrics import ResourceMetrics
@@ -31,8 +29,8 @@ RUN_DIR = Path(os.environ.get("PETCAM_RUN", "/run/petcam"))
 STREAM_STATUS = RUN_DIR / "stream-status.json"
 STREAM_LOG = Path(os.environ.get("PETCAM_STREAM_LOG", "/var/log/petcam/stream.log"))
 CONFIG_FILE = Path(os.environ.get("PETCAM_CONFIG", "/etc/petcam/config.json"))
-RTSP_PORT = 8554
-RTSP_PATH = "/petcam"
+HTTP_PORT = 8080
+HTTP_PATH = "/stream"
 HOTPLUG = object()
 
 
@@ -40,11 +38,11 @@ def parse_short_config(value: str) -> tuple[str, str, float]:
     """Parse the documented SOURCE;WIDTHxHEIGHT;FPS shortcut syntax."""
     parts = value.split(";")
     if len(parts) != 3:
-        raise ConfigurationError('Use -c "USB;1920x1080;30" or -c "CSI;1920x1080;30".')
+        raise ConfigurationError('Use -c "USB;1920x1080;30".')
     source, resolution, raw_fps = (part.strip() for part in parts)
     source = source.upper()
-    if source not in {"USB", "CSI"}:
-        raise ConfigurationError("Capture mode in -c must be USB or CSI.")
+    if source != "USB":
+        raise ConfigurationError("Only USB cameras with native H.264 output are supported.")
     if not re.fullmatch(r"[1-9][0-9]{0,4}x[1-9][0-9]{0,4}", resolution):
         raise ConfigurationError("Resolution in -c must use WIDTHxHEIGHT format.")
     try:
@@ -59,9 +57,7 @@ def parse_short_config(value: str) -> tuple[str, str, float]:
 def discover_cameras(source: str) -> list[dict]:
     if source == "USB":
         return discover_usb_cameras()
-    if source == "CSI":
-        return discover_csi_cameras()
-    raise ValueError("Capture mode must be USB or CSI.")
+    raise ValueError("Only USB cameras are supported.")
 
 
 def camera_modes(source: str, camera: dict) -> list[dict]:
@@ -74,30 +70,19 @@ def camera_modes(source: str, camera: dict) -> list[dict]:
             for fps in mode_fps_values(mode):
                 key = (f'{mode["width"]}x{mode["height"]}', fps)
                 options[key] = {"resolution": key[0], "fps": fps, "format": "H264"}
-    else:
-        if not detect_hardware_h264_encoder().get("available"):
-            return []
-        for mode in camera.get("modes", []):
-            try:
-                width, height, fps = int(mode["width"]), int(mode["height"]), float(mode["fps"])
-            except (KeyError, TypeError, ValueError):
-                continue
-            if width > 0 and height > 0 and fps > 0:
-                key = (f"{width}x{height}", fps)
-                options[key] = {"resolution": key[0], "fps": fps, "format": "H264"}
     return sorted(options.values(), key=lambda item: (-int(item["resolution"].split("x")[0]), -item["fps"]))
 
 
 def _camera_label(source: str, camera: dict) -> str:
     if source == "USB":
         return f'{camera.get("label") or "USB camera"} ({camera.get("device", "unknown device")})'
-    return f'{camera.get("sensor", "CSI camera")} (camera {camera.get("index", "?")})'
+    return f'{camera.get("sensor", "USB camera")} (camera {camera.get("index", "?")})'
 
 
 def _camera_identity(source: str, camera: dict) -> tuple:
     if source == "USB":
         return (camera.get("device"), camera.get("physical_path"))
-    return (camera.get("index"), camera.get("sensor"), camera.get("device_path"))
+    return (camera.get("device"), camera.get("physical_path"))
 
 
 def inventory_signature(source: str, cameras: list[dict]) -> str:
@@ -114,10 +99,6 @@ def inventory_signature(source: str, cameras: list[dict]) -> str:
 def resolve_shortcut(value: str) -> dict:
     source, resolution, fps = parse_short_config(value)
     cameras = discover_cameras(source)
-    if source == "CSI" and not detect_hardware_h264_encoder().get("available"):
-        raise ConfigurationError(
-            "No hardware H.264 encoder was detected. CSI capture will not use software encoding."
-        )
     for camera in cameras:
         matching = [
             mode for mode in camera_modes(source, camera)
@@ -133,14 +114,7 @@ def resolve_shortcut(value: str) -> dict:
                 "resolution": resolution,
                 "fps": fps,
             })
-        return validate_config({
-            "source": source,
-            "camera": camera["index"],
-            "sensor": camera.get("sensor", ""),
-            "device_path": camera.get("device_path", ""),
-            "resolution": resolution,
-            "fps": fps,
-        })
+        raise ConfigurationError("Only USB cameras are supported.")
     raise ConfigurationError(
         f"No {source} camera currently advertises H.264 at {resolution} and {fps:g} FPS. "
         "Choose another camera or advertised mode."
@@ -150,7 +124,7 @@ def resolve_shortcut(value: str) -> dict:
 def _draw_frame(stdscr, title: str, subtitle: str, items: list[str], selected: int) -> None:
     height, width = stdscr.getmaxyx()
     stdscr.erase()
-    stdscr.addnstr(0, 0, "PetCam · H.264 RTSP", max(1, width - 1), curses.A_BOLD)
+    stdscr.addnstr(0, 0, "PetCam · H.264 + MP3 HTTP", max(1, width - 1), curses.A_BOLD)
     stdscr.addnstr(2, 0, title, max(1, width - 1), curses.A_BOLD)
     if subtitle:
         stdscr.addnstr(3, 0, subtitle, max(1, width - 1))
@@ -206,7 +180,7 @@ def wait_for_enter(stdscr, title: str, message: str) -> None:
     height, width = stdscr.getmaxyx()
     stdscr.timeout(-1)
     stdscr.erase()
-    stdscr.addnstr(0, 0, "PetCam · H.264 RTSP", max(1, width - 1), curses.A_BOLD)
+    stdscr.addnstr(0, 0, "PetCam · H.264 + MP3 HTTP", max(1, width - 1), curses.A_BOLD)
     stdscr.addnstr(2, 0, title, max(1, width - 1), curses.A_BOLD)
     for index, line in enumerate(message.splitlines()):
         if index + 4 < height - 1:
@@ -247,61 +221,8 @@ def discover_audio_capabilities() -> dict:
         return fallback
 
 def configure_audio(stdscr) -> dict:
-    audio_index = select_menu(
-        stdscr,
-        "Step 4 · Audio",
-        "Enable microphone capture or disable audio for this stream.",
-        ["Enable microphone audio", "Disable audio"],
-    )
-    if audio_index is None:
-        raise KeyboardInterrupt
-    if audio_index == 1:
-        return {"enabled": False}
-
-    capabilities = discover_audio_capabilities()
-    rates = capabilities["sample_rates"]
-    index = select_menu(stdscr, "Step 5 · Audio sample rate",
-        "Choose the ALSA microphone capture rate.",
-        [str(rate // 1000) + " kHz" for rate in rates])
-    if index is None:
-        raise KeyboardInterrupt
-    sample_rate = rates[index]
-    index = select_menu(stdscr, "Step 6 · Audio channels",
-        "Choose mono or stereo capture.",
-        ["Mono" if count == 1 else "Stereo" for count in capabilities["channels"]])
-    if index is None:
-        raise KeyboardInterrupt
-    channels = capabilities["channels"][index]
-    index = select_menu(stdscr, "Step 7 · Input format",
-        "The capture path accepts signed 16-bit little-endian PCM.",
-        ["S16_LE PCM"])
-    if index is None:
-        raise KeyboardInterrupt
-    input_format = "S16_LE"
-    index = select_menu(stdscr, "Step 8 · Output codec",
-        "Opus is the recommended compressed option; L16 sends uncompressed PCM.",
-        ["Opus (compressed)", "PCM (L16, uncompressed)"])
-    if index is None:
-        raise KeyboardInterrupt
-    output_codec = "OPUS" if index == 0 else "L16"
-    durations = [20, 10, 40, 60] if output_codec == "OPUS" else [5]
-    index = select_menu(stdscr, "Step 9 · RTP packet duration",
-        "Opus uses 20 ms by default; L16 uses 5 ms to keep stereo packets MTU-safe.",
-        [str(duration) + " ms" for duration in durations])
-    if index is None:
-        raise KeyboardInterrupt
-    packet_ms = durations[index]
-    gain_options = [75, 100, 50, 25, 0]
-    index = select_menu(stdscr, "Step 10 · Microphone capture gain",
-        "Sets the ALSA microphone capture level. Start at 75%; reduce it if audio clips.",
-        [str(gain) + "%" for gain in gain_options])
-    if index is None:
-        raise KeyboardInterrupt
-    capture_gain_percent = gain_options[index]
-    return {"enabled": True, "sample_rate": sample_rate, "channels": channels,
-            "input_format": input_format, "output_codec": output_codec,
-            "packet_ms": packet_ms, "capture_gain_percent": capture_gain_percent,
-            "device": capabilities.get("device", "auto")}
+    """Use the fixed MP3 output profile and automatic ALSA selection."""
+    return {"enabled": True, "sample_rate": 44100, "channels": 2, "input_format": "S16_LE", "output_codec": "MP3", "bitrate": 128000, "device": "auto"}
 
 
 def guided_configuration(stdscr) -> dict:
@@ -310,11 +231,11 @@ def guided_configuration(stdscr) -> dict:
             stdscr,
             "Step 1 · Choose capture mode",
             "Select the camera connection type.",
-            ["USB", "CSI"],
+            ["USB"],
         )
         if source_index is None:
             raise KeyboardInterrupt
-        source = "USB" if source_index == 0 else "CSI"
+        source = "USB"
 
         while True:
             cameras = discover_cameras(source)
@@ -337,11 +258,7 @@ def guided_configuration(stdscr) -> dict:
             camera = cameras[camera_index]
             modes = camera_modes(source, camera)
             if not modes:
-                reason = (
-                    "No hardware H.264 encoder was detected for CSI capture."
-                    if source == "CSI" and not detect_hardware_h264_encoder().get("available")
-                    else "This camera does not advertise any H.264 modes. Try a different camera."
-                )
+                reason = "This camera does not advertise any native H.264 modes. Try another USB camera."
                 wait_for_enter(stdscr, "No H.264 modes available", reason)
                 continue
 
@@ -384,19 +301,13 @@ def guided_configuration(stdscr) -> dict:
                 audio = configure_audio(stdscr)
             except KeyboardInterrupt:
                 continue
-            audio_summary = (
-                f"Audio: {audio['sample_rate']} Hz, {audio['channels']} ch, "
-                f"{audio['input_format']} -> {audio['output_codec']} "
-                f"{audio['packet_ms']:g} ms\n"
-                f"Microphone capture gain: {audio['capture_gain_percent']}%"
-                if audio.get("enabled", True) else "Audio: Disabled"
-            )
+            audio_summary = "Audio: ALSA S16_LE -> MP3, 128 kbit/s, stereo, 44.1 kHz"
             confirm_index = select_menu(
                 stdscr,
                 "Step 11 · Confirm stream",
                 f"{_camera_label(source, camera)}\n{mode['resolution']} at {mode['fps']:g} FPS · H.264\n"
                 f"{audio_summary}",
-                ["Activate RTSP stream", "Return to capture mode selection"],
+                ["Activate /stream", "Return to camera selection"],
             )
             if confirm_index == 0:
                 if source == "USB":
@@ -433,19 +344,10 @@ def _audio_capture_mode_label(audio: dict) -> str:
 
 
 def _audio_framing_label(audio: dict) -> str:
-    """Show the selected codec packet duration and RTP clock."""
+    """Describe the fixed MP3 output profile."""
     if audio.get("enabled", True) is False:
         return "Audio: Disabled"
-    sample_rate = int(audio.get("sample_rate", 48000))
-    packet_ms = float(audio.get("packet_ms", 20))
-    codec = str(audio.get("output_codec", "OPUS")).upper()
-    rtp_clock = 48000 if codec == "OPUS" else sample_rate
-    samples = round(sample_rate * packet_ms / 1000)
-    rtp_ticks = round(rtp_clock * packet_ms / 1000)
-    return (
-        f"{codec} packetization: {packet_ms:g} ms · "
-        f"{samples} PCM samples/ch · {rtp_ticks} RTP ticks"
-    )
+    return "Audio output: MP3 · 128 kbit/s · Stereo · 44.1 kHz"
 
 
 def _read_log(path: Path = STREAM_LOG) -> list[str]:
@@ -456,7 +358,7 @@ def _read_log(path: Path = STREAM_LOG) -> list[str]:
 
 
 def _show_log_viewer(stdscr, path: Path = STREAM_LOG) -> None:
-    """Display a live, scrollable tail of the RTSP process log."""
+    """Display a live, scrollable tail of the VLC process log."""
     offset = 0
     follow = True
     stdscr.timeout(250)
@@ -470,7 +372,7 @@ def _show_log_viewer(stdscr, path: Path = STREAM_LOG) -> None:
         else:
             offset = min(max(offset, 0), maximum)
         stdscr.erase()
-        stdscr.addnstr(0, 0, "PetCam · RTSP log", max(1, width - 1), curses.A_BOLD)
+        stdscr.addnstr(0, 0, "PetCam · VLC stream log", max(1, width - 1), curses.A_BOLD)
         stdscr.addnstr(1, 0, f"{len(lines)} lines · showing {offset + 1}-{min(offset + visible, len(lines))}", max(1, width - 1), curses.A_DIM)
         for row, line in enumerate(lines[offset:offset + visible], start=2):
             stdscr.addnstr(row, 0, line, max(1, width - 1))
@@ -580,12 +482,12 @@ def activate_stream_service(*, restart: bool = False) -> None:
 
 
 def run_stream(config: dict, stdscr, *, reconfigure: bool = False) -> int:
-    """Manage the persistent stream; leaving this screen never stops RTSP."""
+    """Manage the persistent stream; leaving this screen never stops VLC."""
     if reconfigure:
         save_stream_configuration(config)
     activate_stream_service(restart=reconfigure)
 
-    url = f"rtsp://{advertised_hostname()}:{RTSP_PORT}{RTSP_PATH}"
+    url = f"http://{advertised_hostname()}:{HTTP_PORT}{HTTP_PATH}"
     metrics = ResourceMetrics()
     stdscr.timeout(1000)
     start_deadline = time.monotonic() + 20
@@ -610,58 +512,18 @@ def run_stream(config: dict, stdscr, *, reconfigure: bool = False) -> int:
         resources = metrics.sample()
         height, width = stdscr.getmaxyx()
         stdscr.erase()
-        stdscr.addnstr(0, 0, "PetCam · H.264 RTSP", max(1, width - 1), curses.A_BOLD)
-        stdscr.addnstr(2, 0, "RTSP URL", max(1, width - 1), curses.A_BOLD)
+        stdscr.addnstr(0, 0, "PetCam · H.264 + MP3 HTTP", max(1, width - 1), curses.A_BOLD)
+        stdscr.addnstr(2, 0, "Stream URL", max(1, width - 1), curses.A_BOLD)
         stdscr.addnstr(3, 0, url, max(1, width - 1))
         stdscr.addnstr(5, 0, "PERSISTENT STREAM SERVICE", max(1, width - 1), curses.A_BOLD)
-        rtsp_state = "STATUS STALE" if status_stale else status.get("state", "starting").upper()
-        stdscr.addnstr(6, 0, f"RTSP: {rtsp_state}", max(1, width - 1))
-        clients = status.get("rtsp_clients")
-        if status_stale or not isinstance(clients, int):
-            client_text = "Unavailable"
-        else:
-            client_text = str(clients)
-        stdscr.addnstr(7, 0, f"RTSP clients: {client_text}", max(1, width - 1))
+        http_state = "STATUS STALE" if status_stale else status.get("state", "starting").upper()
+        stdscr.addnstr(6, 0, f"VLC: {http_state}", max(1, width - 1))
+        stdscr.addnstr(7, 0, "Transport: HTTP · MPEG-TS · H.264 + MP3", max(1, width - 1))
 
-        def type_count(field: str, nal_type: int) -> int:
-            values = status.get(field, {})
-            if not isinstance(values, dict):
-                return 0
-            try:
-                return int(values.get(str(nal_type), 0))
-            except (TypeError, ValueError):
-                return 0
+        stdscr.addnstr(8, 0, "Camera input: native H.264 · microphone: ALSA S16_LE", max(1, width - 1))
 
-        def rate_text(field: str) -> str:
-            value = status.get(field)
-            return f"{value:.1f} NAL/s" if isinstance(value, (int, float)) else "Unavailable"
-
-        if status_stale:
-            capture_text = queue_text = output_text = "Status unavailable"
-        else:
-            capture_text = (
-                f"{rate_text('captured_nals_per_second')} · "
-                f"IDR {type_count('captured_nals_by_type', 5)} · "
-                f"non-IDR {type_count('captured_nals_by_type', 1)}"
-            )
-            queue_text = (
-                f"{rate_text('queued_nals_per_second')} · "
-                f"IDR {type_count('queued_nals_by_type', 5)} · "
-                f"non-IDR {type_count('queued_nals_by_type', 1)}"
-            )
-            if not isinstance(clients, int):
-                output_text = "Client count unavailable"
-            elif clients < 1:
-                output_text = "Waiting for RTSP client"
-            else:
-                output_text = (
-                    f"{rate_text('streamed_nals_per_second')} · "
-                    f"IDR {type_count('rtsp_source_nals_by_type', 5)} · "
-                    f"non-IDR {type_count('rtsp_source_nals_by_type', 1)}"
-                )
-        stdscr.addnstr(8, 0, f"Camera input: {capture_text}", max(1, width - 1))
-        stdscr.addnstr(9, 0, f"Server queue: {queue_text}", max(1, width - 1))
-        stdscr.addnstr(10, 0, f"RTSP source: {output_text}", max(1, width - 1))
+        stdscr.addnstr(9, 0, "VLC output: MPEG-TS · H.264 copy + MP3 128 kbit/s", max(1, width - 1))
+        stdscr.addnstr(10, 0, "Audio: stereo · 44.1 kHz", max(1, width - 1))
         stdscr.addnstr(
             11, 0,
             f"Camera capture mode: {config['source']} · {config['resolution']} · {config['fps']} FPS · H.264",
@@ -685,7 +547,7 @@ def run_stream(config: dict, stdscr, *, reconfigure: bool = False) -> int:
         stdscr.addnstr(
             max(0, height - 1),
             0,
-            "l: view service log · q: close this screen (RTSP keeps running)",
+            "l: view VLC log · q: close this screen (stream keeps running)",
             max(1, width - 1),
             curses.A_DIM,
         )
@@ -713,11 +575,11 @@ def _terminal_main(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="petcam",
-        description="Configure a USB or CSI camera and serve its native H.264 stream over RTSP.",
+        description="Configure a USB camera and publish one combined H.264 + MP3 stream over HTTP.",
         epilog=(
             'Examples:\n'
             '  petcam                 # show the saved stream status\n'
-            '  petcam --configure     # choose a new camera or audio mode\n'
+            '  petcam --configure     # choose a new USB camera mode\n'
             '  petcam -c "USB;1920x1080;30"'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,

@@ -1,10 +1,6 @@
-# Debian packages required by the PetCam runtime and native Live555 build.
+# Runtime packages for USB H.264 capture, ALSA audio, and VLC streaming.
 python3
+vlc
 v4l-utils
 alsa-utils
-libopus-dev
-rpicam-apps-lite
-liblivemedia116
-liblivemedia-dev
-g++
 avahi-daemon

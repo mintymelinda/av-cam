@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "fix/**"
+      - "feat/**"
   pull_request:
 
 permissions:
@@ -12,22 +13,19 @@ permissions:
 
 jobs:
   test:
-    name: Python tests and Live555 native build
+    name: Python tests
     runs-on: ubuntu-24.04
     container: debian:sid
     timeout-minutes: 15
 
     steps:
-      - name: Install Git and Live555 build dependencies
+      - name: Install test dependencies
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
             git \
             ca-certificates \
-            python3 \
-            g++ \
-            liblivemedia-dev \
-            libopus-dev \
+            python3
 
       - name: Check out source
         uses: actions/checkout@v5

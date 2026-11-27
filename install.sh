@@ -85,7 +85,7 @@ trap - EXIT
 [[ -s "$APP_ROOT/lib/libpetcam_live555.so" ]] || fail "The installed Live555 shared library is empty."
 log "Checking that the installed Python binding can load the compiled Live555 library."
 PYTHONPATH="$APP_ROOT/src${PYTHONPATH:+:$PYTHONPATH}" /usr/bin/python3 -c 'from petcam.infrastructure.streaming.live555 import Live555Server; Live555Server(); print("Live555 native library loaded successfully.")'
-log "Leaving build dependencies installed. Do not purge packages or run autoremove on the Pi."
+log "Leaving the installed VLC runtime and camera/audio utilities in place."
 LAUNCHER_TMP="/usr/local/bin/.petcam.${BASHPID}"
 log "Installing the PetCam command launcher."
 install -m 0755 "$REPO_ROOT/petcam" "$LAUNCHER_TMP"

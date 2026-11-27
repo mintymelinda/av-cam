@@ -10,7 +10,7 @@ import sys
 LAUNCHER = "/usr/local/bin/petcam"
 EXPECTED_STDOUT = """usage: petcam [-h] [-c SOURCE;RESOLUTION;FPS] [--configure]
 
-Configure a USB or CSI camera and serve its native H.264 stream over RTSP.
+Configure a USB camera and publish one combined H.264 + MP3 stream over HTTP.
 
 options:
   -h, --help            show this help message and exit
@@ -22,7 +22,7 @@ options:
 
 Examples:
   petcam                 # show the saved stream status
-  petcam --configure     # choose a new camera or audio mode
+  petcam --configure     # choose a new USB camera mode
   petcam -c "USB;1920x1080;30"
 """
 

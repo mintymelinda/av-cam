@@ -11,7 +11,7 @@ from petcam.cli import (
     load_saved_stream_configuration,
     save_stream_configuration,
 )
-from petcam.infrastructure.streaming.live555 import load_camera_status
+from petcam.infrastructure.streaming.vlc import load_camera_status
 
 
 class PersistentServiceConfigurationTests(unittest.TestCase):
@@ -65,7 +65,7 @@ class PersistentServiceConfigurationTests(unittest.TestCase):
             "device": "/dev/video0",
             "resolution": "1280x720",
             "fps": 30,
-            "audio": {"enabled": False},
+            "audio": {"enabled": True, "device": "auto"},
         }
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
@@ -76,7 +76,7 @@ class PersistentServiceConfigurationTests(unittest.TestCase):
                 "fps": 30,
                 "device": "/dev/video0",
                 "physical_path": "",
-                "audio": {"enabled": False},
+                "audio": {"enabled": True, "sample_rate": 44100, "channels": 2, "input_format": "S16_LE", "output_codec": "MP3", "bitrate": 128000, "device": "auto"},
             })
 
     def test_existing_service_is_started_without_forcing_a_restart(self):
