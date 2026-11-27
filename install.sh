@@ -65,7 +65,16 @@ fi
 grep -Fq "usage: petcam" <<< "$HELP_OUTPUT" || fail "The installed PetCam Python CLI did not produce its expected help output."
 log "Checking that the installed VLC executable is available."
 command -v cvlc >/dev/null 2>&1 || fail "VLC was installed without the cvlc command-line executable."
-cvlc --version >/dev/null 2>&1 || fail "The installed headless VLC command-line runtime failed to start."
+# The installer runs as root, while VLC deliberately refuses root by default.
+# This environment override applies only to the non-streaming version probe.
+if ! VLC_VERSION_OUTPUT="$(VLC_ALLOW_RUN_AS_ROOT=1 cvlc --version 2>&1)"; then
+  printf '%s\\n' "$VLC_VERSION_OUTPUT" >&2
+  fail "The installed headless VLC command-line runtime failed its version check."
+fi
+grep -Fq "VLC media player" <<< "$VLC_VERSION_OUTPUT" || {
+  printf '%s\\n' "$VLC_VERSION_OUTPUT" >&2
+  fail "The installed cvlc executable did not report a valid VLC version."
+}
 log "Verified the headless VLC CLI runtime; no desktop VLC packages are installed."
 log "Leaving the installed VLC runtime and camera/audio utilities in place."
 LAUNCHER_TMP="/usr/local/bin/.petcam.${BASHPID}"
