@@ -16,13 +16,31 @@ class VlcStreamTests(unittest.TestCase):
                 "fps": 30, "audio": {"enabled": True, "device": "plughw:1,0"}}
 
     def test_single_stream_copies_h264_and_uses_exact_mp3_profile(self):
-        command = build_vlc_command(self.config(), vlc_binary="/usr/bin/cvlc")
+        with patch.dict("os.environ", {}, clear=True):
+            command = build_vlc_command(self.config(), vlc_binary="/usr/bin/cvlc")
         sout = next(item for item in command if item.startswith("--sout="))
         self.assertNotIn("vcodec=", sout)
         self.assertEqual(sout, "--sout=#transcode{acodec=mp3,ab=128,channels=2,samplerate=44100}:std{access=http,mux=ts,dst=:8080/stream}")
         self.assertIn("access=http,mux=ts,dst=:8080/stream", sout)
         self.assertIn("--v4l2-chroma=H264", command)
         self.assertIn("v4l2:///dev/video0", command)
+        self.assertIn("--input-slave=alsa://plughw:1,0", command)
+
+    def test_environment_audio_device_overrides_saved_auto_setting(self):
+        config = self.config()
+        config["audio"]["device"] = "auto"
+        with patch.dict("os.environ", {"PETCAM_AUDIO_DEVICE": "plughw:2,0"}, clear=True):
+            command = build_vlc_command(config)
+        self.assertIn("--input-slave=alsa://plughw:2,0", command)
+
+    def test_environment_audio_device_overrides_saved_device(self):
+        with patch.dict("os.environ", {"PETCAM_AUDIO_DEVICE": "hw:2,1"}, clear=True):
+            command = build_vlc_command(self.config())
+        self.assertIn("--input-slave=alsa://hw:2,1", command)
+
+    def test_saved_audio_device_is_used_without_environment_override(self):
+        with patch.dict("os.environ", {}, clear=True):
+            command = build_vlc_command(self.config())
         self.assertIn("--input-slave=alsa://plughw:1,0", command)
 
     def test_rejects_non_usb_source(self):
