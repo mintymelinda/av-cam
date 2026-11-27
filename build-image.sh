@@ -7,7 +7,7 @@ RASPIOS_IMAGE_URL="${PETCAM_RASPIOS_IMAGE_URL:-https://downloads.raspberrypi.com
 VERSION="${PETCAM_VERSION:-development}"
 SOURCE_COMMIT="${PETCAM_SOURCE_COMMIT:-}"
 SOURCE_REF="${PETCAM_SOURCE_REF:-$VERSION}"
-SOURCE_REPOSITORY="${PETCAM_SOURCE_REPOSITORY:-https://github.com/mintymelinda/h264-cam.git}"
+SOURCE_REPOSITORY="${PETCAM_SOURCE_REPOSITORY:-https://github.com/mintymelinda/av-cam.git}"
 
 log() { printf '[petcam-image] %s\n' "$*"; }
 fail() { printf '[petcam-image] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -226,7 +226,7 @@ losetup -d "$VERIFY_LOOP_DEVICE"
 VERIFY_LOOP_DEVICE=""
 sync
 
-FINAL_IMAGE="$OUTPUT_DIR/h264-cam-$VERSION-raspios-lite-armhf.img.xz"
+FINAL_IMAGE="$OUTPUT_DIR/petcam-$VERSION-raspios-lite-armhf.img.xz"
 log "Compressing the customized image."
 xz --threads=0 --compress --fast --force --keep --stdout "$BASE_IMAGE" > "$FINAL_IMAGE"
 [[ -s "$FINAL_IMAGE" ]] || fail "The customized image archive is empty."
