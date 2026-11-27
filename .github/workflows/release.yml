@@ -1,4 +1,4 @@
-name: Release H264 Cam Raspberry Pi OS
+name: Release PetCam Raspberry Pi OS
 
 on:
   push:
@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Version tag to publish (for example v1.0.0-beta4)"
+        description: "Exact release tag or version prefix (for example v1.0.0 or v1.0.0-beta)"
         required: true
         type: string
 
@@ -43,18 +43,16 @@ jobs:
         run: python3 -m unittest discover -s tests -v
 
   release:
-    name: Build and publish Trixie ARMHF image
+    name: Build and publish PetCam Trixie ARMHF image
     if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
 
     steps:
-      - name: Check out the exact release tag
+      - name: Check out workflow source
         uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
 
-      - name: Resolve and validate release version
+      - name: Resolve exact release tag
         id: version
         env:
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
@@ -64,15 +62,44 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            release_tag="$INPUT_RELEASE_TAG"
+            prefix="$INPUT_RELEASE_TAG"
+            [[ "$prefix" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9.-]*)?$ ]] || {
+              echo "::error::Enter a release tag or version prefix such as v1.2.3 or v1.2.3-beta."
+              exit 1
+            }
+            mapfile -t matches < <(
+              git ls-remote --tags --refs origin "refs/tags/${prefix}*" |
+                awk '{ sub("refs/tags/", "", $2); print $2 }'
+            )
+            if (("${#matches[@]}" == 0)); then
+              echo "::error::No release tags match '$prefix'."
+              exit 1
+            fi
+            release_tag=""
+            for candidate in "${matches[@]}"; do
+              if [[ "$candidate" == "$prefix" ]]; then
+                release_tag="$candidate"
+                break
+              fi
+            done
+            if [[ -z "$release_tag" ]]; then
+              release_tag="$(printf '%s\\n' "${matches[@]}" | sort -V -r | head -n 1)"
+            fi
           else
             release_tag="$REF_NAME"
           fi
-          [[ "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || {
-            echo "::error::Release version must look like v1.2.3 or v1.2.3-rc.1."
+          [[ "$release_tag" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || {
+            echo "::error::Resolved release tag is not a valid version: $release_tag"
             exit 1
           }
+          echo "Resolved release tag: $release_tag"
           echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the exact resolved release tag
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.version.outputs.tag }}
 
       - name: Validate release scripts
         run: |
@@ -112,15 +139,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: H264 Cam ${{ steps.version.outputs.tag }}
+          name: PetCam ${{ steps.version.outputs.tag }}
           target_commitish: ${{ steps.release.outputs.source_commit }}
           make_latest: true
           fail_on_unmatched_files: true
           overwrite_files: true
           body: |
-            H264 Cam for Raspberry Pi OS Lite (32-bit ARMHF), based on Raspberry Pi OS Trixie.
+            PetCam for Raspberry Pi OS Lite (32-bit ARMHF), based on Raspberry Pi OS Trixie.
 
-            The image is built on an ARM GitHub Actions runner. The build decompresses the official Raspberry Pi OS image, enters its ARMHF userspace with QEMU, installs Git, clones this exact release tag, and runs the repository's top-level sudo ./install.sh. The finished compressed artifact is then extracted and its installed application and native Live555 library are verified.
+            The image is built on an ARM GitHub Actions runner. The build decompresses the official Raspberry Pi OS image, enters its ARMHF userspace with QEMU, installs Git, clones this exact release tag, and runs the repository's top-level sudo ./install.sh. The finished compressed artifact is extracted and checked in an ARMHF chroot: the PetCam CLI must run, the installed VLC runtime (cvlc) must be present, and the application must construct the configured single /stream HTTP MPEG-TS command with native H.264 passthrough and the fixed MP3 audio profile. This verifies the packaged software; it does not replace a real camera/microphone hardware streaming test.
 
             /opt/petcam/build-info records the exact source commit, release version, and SHA-256 of the installer used during the build.
 
@@ -129,7 +156,7 @@ jobs:
             - SHA-256 checksum sidecar
             - Raspberry Pi Imager OS-list JSON manifest
 
-            Import the JSON manifest into Raspberry Pi Imager to add H264 Cam to the OS selection list. Set the hostname, username, password and Wi-Fi options in Imager before writing the card.
+            Import the JSON manifest into Raspberry Pi Imager to add PetCam to the OS selection list. Set the hostname, username, password and Wi-Fi options in Imager before writing the card.
           files: |
             ${{ steps.release.outputs.image_path }}
             ${{ steps.release.outputs.checksum_path }}
