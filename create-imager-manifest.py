@@ -139,9 +139,9 @@ def create_manifest(
     entry = dict(upstream_entry)
     entry.update(
         {
-            "name": "H264 Cam — Raspberry Pi OS Lite (32-bit)",
+            "name": "PetCam — Raspberry Pi OS Lite (32-bit)",
             "release_date": release_date,
-            "description": "Raspberry Pi OS Lite 32-bit with H264 Cam preinstalled. Configure hostname, user, password and Wi-Fi in Raspberry Pi Imager before writing.",
+            "description": "Raspberry Pi OS Lite 32-bit with PetCam preinstalled for USB cameras with native H.264 output and a combined H.264 + MP3 HTTP stream at /stream. Configure hostname, user, password and Wi-Fi in Raspberry Pi Imager before writing.",
             "url": image_url,
             "image_download_size": compressed_size,
             "image_download_sha256": compressed_sha,
