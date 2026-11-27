@@ -1,5 +1,5 @@
 [Unit]
-Description=PetCam persistent Live555 H.264 RTSP camera service
+Description=PetCam persistent VLC H.264 + MP3 HTTP stream
 Wants=network-online.target
 After=network-online.target
 
@@ -13,7 +13,7 @@ Environment=PETCAM_STREAM_LOG=/var/log/petcam/stream.log
 RuntimeDirectory=petcam
 RuntimeDirectoryMode=0755
 UMask=0022
-ExecStart=/usr/bin/python3 -m petcam.infrastructure.streaming.live555
+ExecStart=/usr/bin/python3 -m petcam.infrastructure.streaming.vlc
 Restart=always
 RestartSec=2
 KillSignal=SIGTERM
