@@ -10,6 +10,9 @@ on:
       - "build-image.sh"
       - "release.sh"
       - "install.sh"
+      - "create-imager-manifest.py"
+      - "requirements.apt"
+      - "systemd/**"
       - "scripts/**"
       - "src/**"
       - "tests/**"
@@ -24,7 +27,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: h264-cam-release-${{ inputs.release_tag || github.ref }}
+  group: petcam-release-${{ inputs.release_tag || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -63,7 +66,7 @@ jobs:
           set -euo pipefail
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             prefix="$INPUT_RELEASE_TAG"
-            [[ "$prefix" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9.-]*)?$ ]] || {
+            [[ "$prefix" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]*)?$ ]] || {
               echo "::error::Enter a release tag or version prefix such as v1.2.3 or v1.2.3-beta."
               exit 1
             }
@@ -83,12 +86,12 @@ jobs:
               fi
             done
             if [[ -z "$release_tag" ]]; then
-              release_tag="$(printf '%s\\n' "${matches[@]}" | sort -V -r | head -n 1)"
+              release_tag="$(printf '%s\n' "${matches[@]}" | sort -V -r | head -n 1)"
             fi
           else
             release_tag="$REF_NAME"
           fi
-          [[ "$release_tag" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || {
+          [[ "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || {
             echo "::error::Resolved release tag is not a valid version: $release_tag"
             exit 1
           }
@@ -133,7 +136,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo env GITHUB_OUTPUT="$GITHUB_OUTPUT" \
-            bash ./release.sh "$RELEASE_TAG" "$RUNNER_TEMP/h264-cam-release"
+            bash ./release.sh "$RELEASE_TAG" "$RUNNER_TEMP/petcam-release"
 
       - name: Publish image, checksum and Imager manifest
         uses: softprops/action-gh-release@v2
