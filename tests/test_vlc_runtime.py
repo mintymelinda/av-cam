@@ -12,14 +12,14 @@ from petcam.infrastructure.streaming.vlc import VlcError, build_vlc_command, loa
 
 class VlcStreamTests(unittest.TestCase):
     def config(self):
-        return {"source": "USB", "device": "/dev/video0", "resolution": "1280x720",
+        return {"source": "USB", "native_h264": True, "device": "/dev/video0", "resolution": "1280x720",
                 "fps": 30, "audio": {"enabled": True, "device": "plughw:1,0"}}
 
     def test_single_stream_copies_h264_and_uses_exact_mp3_profile(self):
         command = build_vlc_command(self.config(), vlc_binary="/usr/bin/cvlc")
         sout = next(item for item in command if item.startswith("--sout="))
-        self.assertIn("vcodec=copy", sout)
-        self.assertIn("acodec=mp3,ab=128,channels=2,samplerate=44100", sout)
+        self.assertNotIn("vcodec=", sout)
+        self.assertEqual(sout, "--sout=#transcode{acodec=mp3,ab=128,channels=2,samplerate=44100}:std{access=http,mux=ts,dst=:8080/stream}")
         self.assertIn("access=http,mux=ts,dst=:8080/stream", sout)
         self.assertIn("v4l2:///dev/video0", command)
         self.assertIn("--input-slave=alsa://plughw:1,0", command)

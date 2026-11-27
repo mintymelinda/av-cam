@@ -28,8 +28,8 @@ The VLC transcode profile is exactly:
 
 `#transcode{acodec=mp3,ab=128,channels=2,samplerate=44100}`
 
-The video copy option is added separately so the H.264 camera stream is passed through
-without software encoding.
+No video codec conversion is requested, so VLC passes the camera H.264 video through
+unchanged without software encoding.
 
 ## Install
 

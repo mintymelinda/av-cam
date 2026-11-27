@@ -96,7 +96,7 @@ def build_vlc_command(config: dict, *, vlc_binary: str = "cvlc") -> list[str]:
     if not re.fullmatch(r"(?:plug)?hw:[A-Za-z0-9_.-]+,\d+", alsa_device):
         raise VlcError("Configured ALSA device must be a hw:CARD,DEVICE or plughw:CARD,DEVICE name.")
     sout = (
-        "#transcode{vcodec=copy,acodec=mp3,ab=128,channels=2,samplerate=44100}"
+        "#transcode{acodec=mp3,ab=128,channels=2,samplerate=44100}"
         ":std{access=http,mux=ts,dst=:8080/stream}"
     )
     return [

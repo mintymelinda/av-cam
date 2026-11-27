@@ -44,10 +44,9 @@ class PersistentServiceConfigurationTests(unittest.TestCase):
 
     def test_configuration_is_installed_as_readable_json_for_system_service(self):
         config = {
-            "source": "CSI",
-            "camera": 0,
-            "sensor": "imx219",
-            "device_path": "/base/soc/i2c0/imx219@10",
+            "source": "USB",
+            "device": "/dev/video0",
+            "physical_path": "/sys/devices/usb1/1-1",
             "resolution": "1920x1080",
             "fps": 30,
             "audio": {"enabled": False},
