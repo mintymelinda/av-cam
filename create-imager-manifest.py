@@ -175,7 +175,7 @@ def main() -> None:
     parser.add_argument("image", type=Path, help="local PetCam .img.xz file")
     parser.add_argument(
         "output", nargs="?", type=Path,
-        help="JSON manifest output path (default: h264-cam.rpi-imager-manifest.json beside the image)",
+        help="JSON manifest output path (default: petcam.rpi-imager-manifest.json beside the image)",
     )
     parser.add_argument(
         "--image-url", required=True,
