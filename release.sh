@@ -7,7 +7,7 @@ OUTPUT_DIR="${2:-$REPO_ROOT/dist/release}"
 RELEASE_BASE_URL="${3:-https://github.com/mintymelinda/av-cam/releases/download/$VERSION}"
 
 log() { printf '[petcam-release] %s\n' "$*"; }
-fail() { printf '[h264-cam-release] ERROR: %s\n' "$*" >&2; exit 1; }
+fail() { printf '[petcam-release] ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$EUID" -eq 0 ]] || fail "Run as root: sudo ./release.sh <version> [output-directory]."
 [[ -n "$VERSION" ]] || fail "A release version is required (for example: v1.0.0)."
