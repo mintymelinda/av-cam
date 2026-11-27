@@ -20,7 +20,7 @@ The single endpoint is:
 
 It carries one MPEG-TS stream containing:
 
-- Video: native camera H.264, VLC `vcodec=copy` (no video re-encoding)
+- Video: native camera H.264 passed through unchanged (no video re-encoding)
 - Audio: MP3, 128 kbit/s, stereo, 44.1 kHz
 - Transport: VLC built-in HTTP output; no Live555, custom RTSP server, or RTSP session
 
