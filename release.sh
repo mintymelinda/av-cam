@@ -16,15 +16,15 @@ fail() { printf '[h264-cam-release] ERROR: %s\n' "$*" >&2; exit 1; }
 [[ -f "$REPO_ROOT/build-image.sh" && -f "$REPO_ROOT/create-imager-manifest.py" ]] || fail "Release scripts are missing."
 
 OUTPUT_DIR="$(mkdir -p "$OUTPUT_DIR" && cd "$OUTPUT_DIR" && pwd)"
-IMAGE_NAME="h264-cam-$VERSION-raspios-lite-armhf.img.xz"
+IMAGE_NAME="petcam-$VERSION-raspios-lite-armhf.img.xz"
 IMAGE_PATH="$OUTPUT_DIR/$IMAGE_NAME"
 CHECKSUM_PATH="$IMAGE_PATH.sha256"
-MANIFEST_PATH="$OUTPUT_DIR/h264-cam-imager-manifest.json"
+MANIFEST_PATH="$OUTPUT_DIR/petcam-imager-manifest.json"
 RELEASE_DATE="$(date -u +%F)"
 SOURCE_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 IMAGE_URL="$RELEASE_BASE_URL/$IMAGE_NAME"
 
-log "Building the final Raspberry Pi OS Lite Trixie ARMHF image ($VERSION)."
+log "Building the final PetCam Raspberry Pi OS Lite Trixie ARMHF image ($VERSION)."
 PETCAM_VERSION="$VERSION" PETCAM_SOURCE_COMMIT="$SOURCE_COMMIT" PETCAM_SOURCE_REF="$VERSION" "$REPO_ROOT/build-image.sh" "$OUTPUT_DIR"
 
 [[ -s "$IMAGE_PATH" ]] || fail "Expected final image was not produced: $IMAGE_PATH"
