@@ -103,7 +103,7 @@ def build_vlc_command(config: dict, *, vlc_binary: str = "cvlc") -> list[str]:
         vlc_binary, "--intf", "dummy", "--no-video-title-show", "--no-sout-display",
         "--sout-keep", f"--sout={sout}",
         f"--input-slave=alsa://{alsa_device}",
-        "--v4l2-chroma=h264", f"--v4l2-width={width}",
+        "--v4l2-chroma=H264", f"--v4l2-width={width}",
         f"--v4l2-height={height}", f"--v4l2-fps={fps:g}",
         f"v4l2://{device}",
     ]

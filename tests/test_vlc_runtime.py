@@ -21,6 +21,7 @@ class VlcStreamTests(unittest.TestCase):
         self.assertNotIn("vcodec=", sout)
         self.assertEqual(sout, "--sout=#transcode{acodec=mp3,ab=128,channels=2,samplerate=44100}:std{access=http,mux=ts,dst=:8080/stream}")
         self.assertIn("access=http,mux=ts,dst=:8080/stream", sout)
+        self.assertIn("--v4l2-chroma=H264", command)
         self.assertIn("v4l2:///dev/video0", command)
         self.assertIn("--input-slave=alsa://plughw:1,0", command)
 
