@@ -1,4 +1,5 @@
-# Headless VLC runtime and its input, codec, and HTTP streaming plugins.
+# Headless VLC command-line runtime (cvlc) and required input/streaming plugins.
+# Do not install the vlc desktop metapackage or GUI/video-output plugins.
 python3
 vlc-bin
 vlc-plugin-base
